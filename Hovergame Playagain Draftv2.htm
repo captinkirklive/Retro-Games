@@ -1,0 +1,173 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hover Board Traffic Surfer</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
+        #gameCanvas { display: block; border: 2px solid #333; cursor: none; }
+        #gameOverlay { position: absolute; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        #playAgainBtn { padding: 10px 20px; font-size: 18px; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div style="position: relative;">
+        <canvas id="gameCanvas" width="600" height="800"></canvas>
+        <div id="gameOverlay">
+            <h1 id="gameOverText" style="color: #ff0000; font-size: 40px; text-shadow: 0 0 10px #ff0000;">Game Over</h1>
+            <button id="playAgainBtn">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverlay = document.getElementById('gameOverlay');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
+        // Game state
+        let player, road, vehicles, otherBoarders, playerCans, enemyCans, explosions, score, gameOver, level, lastShotTime;
+
+        function initGame() {
+            player = { x: canvas.width / 2, y: canvas.height - 50, width: 30, height: 60, trail: [], lastThrowDirection: 'left' };
+            road = { lanes: [150, 300, 450], speed: 5 };
+            vehicles = [];
+            otherBoarders = [];
+            playerCans = [];
+            enemyCans = [];
+            explosions = [];
+            score = 0;
+            gameOver = false;
+            level = 1;
+            lastShotTime = 0;
+        }
+
+        // Input handling
+        let keys = { ArrowLeft: false, ArrowRight: false, ' ': false };
+        let mouseX = canvas.width / 2;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key in keys) {
+                keys[e.key] = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keys) {
+                keys[e.key] = false;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+        });
+
+        playAgainBtn.addEventListener('click', resetGame);
+
+        function resetGame() {
+            initGame();
+            gameOverlay.style.display = 'none';
+            gameLoop();
+        }
+
+        // ... [All other functions remain the same as in the original code] ...
+
+        function checkCollisions() {
+            const checkCollision = (obj1, obj2) => {
+                return obj1.x < obj2.x + obj2.width &&
+                       obj1.x + obj1.width > obj2.x &&
+                       obj1.y < obj2.y + obj2.height &&
+                       obj1.y + obj1.height > obj2.y;
+            };
+
+            // Player collision with vehicles
+            if (vehicles.some(vehicle => checkCollision(player, vehicle))) {
+                gameOver = true;
+                createExplosion(player.x + player.width / 2, player.y + player.height / 2, '#00ff00');
+            }
+
+            // Other boarders collision with vehicles
+            otherBoarders.forEach((boarder, boarderIndex) => {
+                vehicles.forEach((vehicle, vehicleIndex) => {
+                    if (checkCollision(boarder, vehicle)) {
+                        createExplosion(boarder.x + boarder.width / 2, boarder.y + boarder.height / 2, '#ff00ff');
+                        otherBoarders.splice(boarderIndex, 1);
+                        vehicles.splice(vehicleIndex, 1);
+                    }
+                });
+            });
+
+            // Pop cans collision with vehicles and other boarders
+            playerCans.forEach((can, canIndex) => {
+                vehicles.forEach((vehicle, vehicleIndex) => {
+                    if (can.x > vehicle.x && can.x < vehicle.x + vehicle.width &&
+                        can.y > vehicle.y && can.y < vehicle.y + vehicle.height) {
+                        createExplosion(vehicle.x + vehicle.width / 2, vehicle.y + vehicle.height / 2, vehicle.color);
+                        vehicles.splice(vehicleIndex, 1);
+                        playerCans.splice(canIndex, 1);
+                        score += 50;
+                    }
+                });
+                otherBoarders.forEach((boarder, boarderIndex) => {
+                    if (can.x > boarder.x && can.x < boarder.x + boarder.width &&
+                        can.y > boarder.y && can.y < boarder.y + boarder.height) {
+                        createExplosion(boarder.x + boarder.width / 2, boarder.y + boarder.height / 2, boarder.color);
+                        otherBoarders.splice(boarderIndex, 1);
+                        playerCans.splice(canIndex, 1);
+                        score += 100;
+                    }
+                });
+            });
+
+            enemyCans.forEach((can, canIndex) => {
+                vehicles.forEach((vehicle, vehicleIndex) => {
+                    if (can.x > vehicle.x && can.x < vehicle.x + vehicle.width &&
+                        can.y > vehicle.y && can.y < vehicle.y + vehicle.height) {
+                        createExplosion(vehicle.x + vehicle.width / 2, vehicle.y + vehicle.height / 2, vehicle.color);
+                        vehicles.splice(vehicleIndex, 1);
+                        enemyCans.splice(canIndex, 1);
+                    }
+                });
+            });
+        }
+
+        function gameLoop() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawRoad();
+            vehicles.forEach(drawVehicle);
+            otherBoarders.forEach(boarder => drawHoverBoard(boarder.x, boarder.y, boarder.width, boarder.height, boarder.color));
+            drawPopCans();
+            updateAndDrawExplosions();
+
+            if (!gameOver) {
+                movePlayer();
+                moveVehicles();
+                moveOtherBoarders();
+                movePopCans();
+                checkCollisions();
+                updateLevel();
+                drawPlayerTrail();
+                drawHoverBoard(player.x, player.y, player.width, player.height, '#00ff00');
+                score++;
+            }
+
+            drawScore();
+
+            if (gameOver) {
+                gameOverlay.style.display = 'flex';
+            }
+
+            if (!gameOver) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
